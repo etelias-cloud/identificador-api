@@ -1,0 +1,19 @@
+from fastapi import FastAPI, File, UploadFile
+
+app = FastAPI()
+
+@app.get("/")
+def home():
+    return {"ok": True}
+
+@app.post("/identify")
+async def identify(file: UploadFile = File(...), top_k: int = 3):
+    # Reemplazá luego por tu lógica CLIP
+    return {
+        "ok": True,
+        "resultados": [
+            {"sku": "TEST1", "score": 0.9},
+            {"sku": "TEST2", "score": 0.8},
+            {"sku": "TEST3", "score": 0.7}
+        ]
+    }
