@@ -6,3 +6,4 @@ requests
 pandas
 imagehash
 numpy
+scipy
