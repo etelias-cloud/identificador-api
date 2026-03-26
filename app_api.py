@@ -99,7 +99,7 @@ def load_master_if_needed():
         if col not in df.columns:
             raise RuntimeError(f"Falta columna requerida en maestro: {col}")
 
-    image_cols = [c for c in ["IMG1", "IMG2", "IMG3", "IMG4"] if c in df.columns]
+    image_cols = [c for c in ["IMG1_URL", "IMG2_URL", "IMG3_URL", "IMG4_URL"] if c in df.columns]
     if not image_cols:
         raise RuntimeError("No hay columnas IMG1..IMG4 en el maestro")
 
