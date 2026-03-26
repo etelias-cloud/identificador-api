@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
 from PIL import Image
 from io import BytesIO
@@ -11,8 +11,7 @@ import re
 app = FastAPI(title="Identificador de Productos")
 
 MASTER_CSV_URL = "https://docs.google.com/spreadsheets/d/1R0dowhyTIPVwQOozpsVpDXbjZdeD6VtabvALjOkyjco/export?format=csv&gid=0"
-
-CACHE_TTL_SECONDS = 900  # 15 min
+CACHE_TTL_SECONDS = 900  # 15 minutos
 
 _cache = {
     "loaded_at": 0,
@@ -26,17 +25,14 @@ def normalize_drive_url(url: str) -> str:
 
     url = url.strip()
 
-    # Ya viene en formato uc?id=
     if "drive.google.com/uc?" in url:
         return url
 
-    # Formato /file/d/ID/view
     m = re.search(r"/file/d/([a-zA-Z0-9_-]+)", url)
     if m:
         file_id = m.group(1)
         return f"https://drive.google.com/uc?export=download&id={file_id}"
 
-    # Formato con id=
     m = re.search(r"[?&]id=([a-zA-Z0-9_-]+)", url)
     if m:
         file_id = m.group(1)
@@ -46,10 +42,9 @@ def normalize_drive_url(url: str) -> str:
 
 
 def download_image(url: str) -> Image.Image:
-    if not url:
-        raise ValueError("URL vacía")
-
     direct_url = normalize_drive_url(url)
+    if not direct_url:
+        raise ValueError("URL vacía")
 
     headers = {
         "User-Agent": "Mozilla/5.0"
@@ -57,6 +52,11 @@ def download_image(url: str) -> Image.Image:
 
     resp = requests.get(direct_url, timeout=30, headers=headers)
     resp.raise_for_status()
+
+    content_type = resp.headers.get("Content-Type", "")
+    if "text/html" in content_type.lower():
+        raise ValueError(f"La URL no devolvió una imagen válida: {direct_url}")
+
     return Image.open(BytesIO(resp.content)).convert("RGB")
 
 
@@ -71,7 +71,6 @@ def build_hashes(img: Image.Image) -> dict:
 
 
 def hash_distance(h1: dict, h2: dict) -> float:
-    # Menor es mejor
     return (
         (h1["phash"] - h2["phash"]) * 0.40 +
         (h1["dhash"] - h2["dhash"]) * 0.25 +
@@ -81,8 +80,6 @@ def hash_distance(h1: dict, h2: dict) -> float:
 
 
 def distance_to_score(distance: float) -> float:
-    # Escala simple 0..1
-    # Ajustable según resultados reales
     score = max(0.0, 1.0 - (distance / 32.0))
     return round(score, 4)
 
@@ -93,17 +90,20 @@ def load_master_if_needed():
         return
 
     df = pd.read_csv(MASTER_CSV_URL)
-    df.columns = df.columns.str.strip()   # 
-    print("COLUMNAS:", df.columns.tolist())
-    
+    df.columns = df.columns.str.strip()
+
+    print("COLUMNAS DETECTADAS:", df.columns.tolist(), flush=True)
+
     required = ["SKU", "DESCRIPCIÓN", "CÓDIGO DE BARRAS"]
     for col in required:
         if col not in df.columns:
             raise RuntimeError(f"Falta columna requerida en maestro: {col}")
 
-    image_cols = [c for c in ["IMG1_URL", "IMG2_URL", "IMG3_URL", "IMG4_URL"] if c in df.columns]
+    image_cols = [c for c in ["IMG1-URL", "IMG2-URL", "IMG3-URL", "IMG4-URL"] if c in df.columns]
     if not image_cols:
-        raise RuntimeError("No hay columnas IMG1..IMG4 en el maestro")
+        raise RuntimeError(
+            f"No hay columnas IMG1-URL..IMG4-URL en el maestro. Detectadas: {df.columns.tolist()}"
+        )
 
     items = []
 
@@ -112,27 +112,27 @@ def load_master_if_needed():
         descripcion = str(row.get("DESCRIPCIÓN", "")).strip()
         codigo_barras = str(row.get("CÓDIGO DE BARRAS", "")).strip()
 
-        if not sku:
+        if not sku or sku.lower() == "nan":
             continue
 
         for col in image_cols:
-            url = str(row.get(col, "")).strip()
-            if not url or url.lower() == "nan":
+            raw_url = str(row.get(col, "")).strip()
+            if not raw_url or raw_url.lower() == "nan":
                 continue
 
             try:
-                img = download_image(url)
+                img = download_image(raw_url)
                 hashes = build_hashes(img)
 
                 items.append({
                     "sku": sku,
                     "descripcion": descripcion,
                     "codigo_barras": codigo_barras,
-                    "imagen_url": normalize_drive_url(url),
+                    "imagen_url": normalize_drive_url(raw_url),
                     "hashes": hashes
                 })
-            except Exception:
-                # Ignora imágenes rotas, pero sigue con las demás
+            except Exception as ex:
+                print(f"[WARN] No se pudo cargar {col} para {sku}: {ex}", flush=True)
                 continue
 
     if not items:
@@ -141,14 +141,18 @@ def load_master_if_needed():
     _cache["items"] = items
     _cache["loaded_at"] = now
 
+    print(f"Maestro cargado. Referencias válidas: {len(items)}", flush=True)
+
 
 @app.get("/")
 def root():
     return {"ok": True, "service": "identificador-api"}
 
+
 @app.get("/health")
 def health():
     return {"ok": True}
+
 
 @app.post("/identify")
 async def identify(file: UploadFile = File(...), top_k: int = 3):
@@ -159,15 +163,11 @@ async def identify(file: UploadFile = File(...), top_k: int = 3):
         query_img = Image.open(BytesIO(content)).convert("RGB")
         query_hashes = build_hashes(query_img)
 
-        # Mejor distancia por SKU
         best_by_sku = {}
 
         for item in _cache["items"]:
             dist = hash_distance(query_hashes, item["hashes"])
             score = distance_to_score(dist)
-
-            sku = item["sku"]
-            current = best_by_sku.get(sku)
 
             candidate = {
                 "sku": item["sku"],
@@ -175,15 +175,15 @@ async def identify(file: UploadFile = File(...), top_k: int = 3):
                 "codigo_barras": item["codigo_barras"],
                 "score": score,
                 "imagen_url": item["imagen_url"],
-                "distance": dist,
+                "distance": dist
             }
 
+            current = best_by_sku.get(item["sku"])
             if current is None or dist < current["distance"]:
-                best_by_sku[sku] = candidate
+                best_by_sku[item["sku"]] = candidate
 
         results = sorted(best_by_sku.values(), key=lambda x: x["distance"])[:top_k]
 
-        # Quitar campo interno
         final = []
         for r in results:
             final.append({
@@ -200,9 +200,8 @@ async def identify(file: UploadFile = File(...), top_k: int = 3):
         }
 
     except Exception as e:
+        print(f"[ERROR] /identify: {e}", flush=True)
         return JSONResponse(
             status_code=500,
             content={"ok": False, "error": str(e)}
         )
-
-
