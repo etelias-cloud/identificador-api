@@ -93,7 +93,9 @@ def load_master_if_needed():
         return
 
     df = pd.read_csv(MASTER_CSV_URL)
-
+    df.columns = df.columns.str.strip()   # 
+    print("COLUMNAS:", df.columns.tolist())
+    
     required = ["SKU", "DESCRIPCIÓN", "CÓDIGO DE BARRAS"]
     for col in required:
         if col not in df.columns:
@@ -202,3 +204,5 @@ async def identify(file: UploadFile = File(...), top_k: int = 3):
             status_code=500,
             content={"ok": False, "error": str(e)}
         )
+
+
