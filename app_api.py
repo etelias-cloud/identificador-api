@@ -182,7 +182,15 @@ async def identify(file: UploadFile = File(...), top_k: int = 3):
             if current is None or dist < current["distance"]:
                 best_by_sku[item["sku"]] = candidate
 
-        results = sorted(best_by_sku.values(), key=lambda x: x["distance"])[:top_k]
+        MIN_SCORE = 0.40  # 40%
+
+        results = sorted(best_by_sku.values(), key=lambda x: x["distance"])
+
+        # filtrar por score mínimo
+        results = [r for r in results if r["score"] >= MIN_SCORE]
+
+        # quedarse con los mejores top_k ya filtrados
+        results = results[:top_k]
 
         final = []
         for r in results:
