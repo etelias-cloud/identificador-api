@@ -12,6 +12,7 @@ app = FastAPI(title="Identificador de Productos")
 
 MASTER_CSV_URL = "https://docs.google.com/spreadsheets/d/1R0dowhyTIPVwQOozpsVpDXbjZdeD6VtabvALjOkyjco/export?format=csv&gid=0"
 CACHE_TTL_SECONDS = 900  # 15 minutos
+MIN_SCORE = 0.40         # umbral orientativo, pero NO filtra resultados
 
 _cache = {
     "loaded_at": 0,
@@ -182,15 +183,8 @@ async def identify(file: UploadFile = File(...), top_k: int = 3):
             if current is None or dist < current["distance"]:
                 best_by_sku[item["sku"]] = candidate
 
-        MIN_SCORE = 0.40  # 40%
-
-        results = sorted(best_by_sku.values(), key=lambda x: x["distance"])
-
-        # filtrar por score mínimo
-        results = [r for r in results if r["score"] >= MIN_SCORE]
-
-        # quedarse con los mejores top_k ya filtrados
-        results = results[:top_k]
+        # NO filtrar por score: devolver siempre top_k mejores
+        results = sorted(best_by_sku.values(), key=lambda x: x["distance"])[:top_k]
 
         final = []
         for r in results:
@@ -199,7 +193,8 @@ async def identify(file: UploadFile = File(...), top_k: int = 3):
                 "descripcion": r["descripcion"],
                 "codigo_barras": r["codigo_barras"],
                 "score": r["score"],
-                "imagen_url": r["imagen_url"]
+                "imagen_url": r["imagen_url"],
+                "aceptable": r["score"] >= MIN_SCORE
             })
 
         return {
