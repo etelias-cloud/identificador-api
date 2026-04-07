@@ -90,6 +90,7 @@ def load_master_if_needed():
     if _cache["items"] and (now - _cache["loaded_at"] < CACHE_TTL_SECONDS):
         return
 
+    print("[INFO] Leyendo maestro CSV...", flush=True)
     df = pd.read_csv(MASTER_CSV_URL)
     df.columns = df.columns.str.strip()
 
@@ -105,6 +106,8 @@ def load_master_if_needed():
         raise RuntimeError(
             f"No hay columnas IMG1-URL..IMG4-URL en el maestro. Detectadas: {df.columns.tolist()}"
         )
+
+    print("[INFO] Columnas de imagen detectadas:", image_cols, flush=True)
 
     items = []
 
@@ -136,14 +139,13 @@ def load_master_if_needed():
                 print(f"[WARN] No se pudo cargar {col} para {sku}: {ex}", flush=True)
                 continue
 
+    print(f"[INFO] Referencias válidas cargadas: {len(items)}", flush=True)
+
     if not items:
         raise RuntimeError("No se pudieron cargar imágenes válidas del maestro")
 
     _cache["items"] = items
     _cache["loaded_at"] = now
-
-    print(f"Maestro cargado. Referencias válidas: {len(items)}", flush=True)
-
 
 @app.get("/")
 def root():
