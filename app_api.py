@@ -158,9 +158,12 @@ def health():
 @app.post("/identify")
 async def identify(file: UploadFile = File(...), top_k: int = 3):
     try:
+        print("[INFO] Iniciando /identify", flush=True)
         load_master_if_needed()
 
         content = await file.read()
+        print(f"[INFO] Bytes recibidos: {len(content)}", flush=True)
+
         query_img = Image.open(BytesIO(content)).convert("RGB")
         query_hashes = build_hashes(query_img)
 
@@ -183,7 +186,6 @@ async def identify(file: UploadFile = File(...), top_k: int = 3):
             if current is None or dist < current["distance"]:
                 best_by_sku[item["sku"]] = candidate
 
-        # NO filtrar por score: devolver siempre top_k mejores
         results = sorted(best_by_sku.values(), key=lambda x: x["distance"])[:top_k]
 
         final = []
@@ -197,13 +199,17 @@ async def identify(file: UploadFile = File(...), top_k: int = 3):
                 "aceptable": r["score"] >= MIN_SCORE
             })
 
+        print(f"[INFO] Resultados devueltos: {len(final)}", flush=True)
+
         return {
             "ok": True,
             "resultados": final
         }
 
     except Exception as e:
-        print(f"[ERROR] /identify: {e}", flush=True)
+        import traceback
+        print("[ERROR] /identify:", str(e), flush=True)
+        traceback.print_exc()
         return JSONResponse(
             status_code=500,
             content={"ok": False, "error": str(e)}
