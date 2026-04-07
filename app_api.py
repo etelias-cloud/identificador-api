@@ -193,12 +193,12 @@ async def identify(file: UploadFile = File(...), top_k: int = 3):
         final = []
         for r in results:
             final.append({
-                "sku": r["sku"],
-                "descripcion": r["descripcion"],
-                "codigo_barras": r["codigo_barras"],
-                "score": r["score"],
-                "imagen_url": r["imagen_url"],
-                "aceptable": r["score"] >= MIN_SCORE
+                "sku": str(r["sku"]),
+                "descripcion": str(r["descripcion"]),
+                "codigo_barras": str(r["codigo_barras"]),
+                "score": float(r["score"]),
+                "imagen_url": str(r["imagen_url"]),
+                "aceptable": bool(float(r["score"]) >= MIN_SCORE)
             })
 
         print(f"[INFO] Resultados devueltos: {len(final)}", flush=True)
