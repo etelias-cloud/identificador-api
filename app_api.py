@@ -1,6 +1,6 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
-from PIL import Image
+from PIL import Image 
 from io import BytesIO
 import requests
 import pandas as pd
